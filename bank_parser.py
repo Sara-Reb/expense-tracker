@@ -172,7 +172,6 @@ if __name__ == "__main__":
         ai_df.set_index('row_id', inplace=True)
         final_df = transaction_df.join(ai_df)
         print("\nEcco il tuo estratto conto finale categorizzato:")
-       # Selezioni le colonne che vuoi e poi le stampi come stringa
         print(final_df[['date', 'amount', 'merchant', 'category']].to_string())
     else:
         print("Errore: Dati di analisi vuoti.")

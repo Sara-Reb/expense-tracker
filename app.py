@@ -1,19 +1,26 @@
 from flask import Flask, render_template, request, redirect, url_for
 from flask_sqlalchemy import SQLAlchemy
-import os
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy import Integer, Float, Text, Date
+from bank_parser import parse_file, identify_structure, parse_bank_statement, categorize_transactions
+import json
+import pandas as pd
+
+class Base(DeclarativeBase):
+    pass
+db = SQLAlchemy(model_class = Base)
 
 app = Flask(__name__)
-
-# Transaction Database Configuration
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///expenses.db'
-db = SQLAlchemy(app)
+db.init_app(app)
+
 class Expenses(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    date = db.Column(db.Date, nullable=False)
-    category = db.Column(db.Text, nullable=False)
-    amount = db.Column(db.Float, nullable=False)
-    description = db.Column(db.Text, nullable=True)
-    beneficiary = db.Column(db.Text, nullable=False)
+    id : Mapped[int] = mapped_column(Integer, primary_key=True)
+    date : Mapped[Date] = mapped_column(Date, nullable=False)
+    category : Mapped[str] = mapped_column(Text, nullable=False)
+    amount : Mapped[float] = mapped_column(Float, nullable=False)
+    description : Mapped[str] = mapped_column(Text, nullable=True)
+    merchant : Mapped[str] = mapped_column(Text, nullable=True)
 
 
 
@@ -25,8 +32,16 @@ def index():
 def upload():
     file = request.files['file']
     if file and (file.filename.endswith('.csv') or file.filename.endswith('.xlsx')):
-        # Process the file and save transactions to the database
-        # (This is a placeholder; you would implement the actual parsing logic here)
+        
+        df = parse_file(file)
+        structure = identify_structure(df)
+        transaction_df = parse_bank_statement(df, structure)
+        categorized_transactions = json.loads(categorize_transactions(transaction_df))
+        
+        categories_df = pd.DataFrame(categorized_transactions['transactions'])
+        categories_df.set_index('row_id', inplace=True)
+        parsed_df = transaction_df.join(categories_df)
+        parsed_df.to_sql('expenses', con=db.engine, if_exists='append', index=False)
         return redirect(url_for('index'))
     else:
         message = "Invalid file format. Please upload a CSV or Excel file."
