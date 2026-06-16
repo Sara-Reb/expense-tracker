@@ -86,8 +86,21 @@ def upload():
 @app.route('/dashboard')
 def dashboard():
     # Ordiniamo per data decrescente (le più recenti in alto)
-    transazioni = Expenses.query.order_by(Expenses.date.desc()).all()
-    return render_template('dashboard.html', transazioni=transazioni)
+    transactions = Expenses.query.order_by(Expenses.date.desc()).all()
+    spending_by_category = {}
+    for t in transactions:
+        if t.amount < 0:
+            spending_by_category[t.category] = spending_by_category.get(t.category, 0) + abs(t.amount)
+    monthly_spending = {}
+    monthly_income = {}
+    for t in transactions:
+        month = t.date.strftime('%Y-%m') 
+        if t.amount < 0:
+            monthly_spending[month] = monthly_spending.get(month, 0) + abs(t.amount)
+        else:
+            monthly_income[month] = monthly_income.get(month, 0) + t.amount
+    
+    return render_template('dashboard.html', transazioni=transactions, spending_by_category=spending_by_category, monthly_spending=monthly_spending, monthly_income=monthly_income)
 
 
 with app.app_context():
