@@ -9,7 +9,8 @@ import dateparser
 
 
 load_dotenv()
-client = genai.Client(api_key=os.getenv("API_KEY"))
+
+client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
 
 # --- STRUTTURE DATI (PIATTE E SEMPLICI) ---
@@ -42,9 +43,9 @@ class TransactionAnalysis(BaseModel):
 
 def parse_file(file):
     if file.filename.endswith('.csv'):
-        df = read_csv(file)
+        df = read_csv(file,header=None)
     elif file.filename.endswith('.xlsx') or file.filename.endswith('.xls'):
-        df = read_excel(file)
+        df = read_excel(file, header=None)
     else:
         raise ValueError("Unsupported file format. Please upload a CSV or Excel file.")
     return df
@@ -69,17 +70,28 @@ def identify_structure(df):
             'response_schema': BankStatementStructure,
         }
     )
+    print("Identified structure response:", response.text)
     return response.text
 
+def parse_date(x):
+    try:
+        return pd.to_datetime(x)
+    except:
+        return dateparser.parse(str(x), languages=['it'])
+
+
 def parse_bank_statement(df, structure):
+    df = df.copy()
     structure = json.loads(structure)
     header_row = int(structure['header_row'])
     date_col = structure['date_col']
     amount_col = structure['amount_col']
     description_col = structure['description_col']
-
     df = df.drop(range(header_row)) 
+    print(f"DataFrame  after dropping header rows: {df.head(10).to_string()}")
     df.columns = df.iloc[0]
+    print(f"DataFrame after setting header row: {df.head(10).to_string()}")
+    df.columns = df.columns.astype(str).str.strip()
     df = df.drop(df.index[0])
     
     if structure.get('income_col') and structure.get('expense_col'):
@@ -90,9 +102,11 @@ def parse_bank_statement(df, structure):
         transaction_df['amount'] = transaction_df['expense'] + transaction_df['income']
         transaction_df = transaction_df.drop(columns=['income', 'expense'])
     else:
+        
         transaction_df = df[[date_col, amount_col, description_col]]
         transaction_df.columns = ['date', 'amount', 'description']
         transaction_df['amount'] = pd.to_numeric(transaction_df['amount'], errors='coerce')
+    
 
     transaction_df = transaction_df.dropna(subset=['amount', 'date'])
     transaction_df = transaction_df[transaction_df['amount'] != 0]
@@ -101,11 +115,10 @@ def parse_bank_statement(df, structure):
     transaction_df = transaction_df.dropna(subset=['amount', 'date'])
     transaction_df = transaction_df[transaction_df['amount'] != 0]
 
-
     # Applichiamo il parser intelligente su ogni riga impostando la lingua italiana
-    transaction_df['date'] = transaction_df['date'].apply(
-        lambda x: dateparser.parse(str(x), languages=['it'])
-    )
+    transaction_df['date'] = transaction_df['date'].apply(parse_date)
+
+
 
     # Rimuoviamo eventuali righe fallite (diventate NaT/None)
     transaction_df = transaction_df.dropna(subset=['date'])
@@ -165,55 +178,48 @@ Input Transactions to categorize (JSON format):
 
 # --- BLOCCO DI TEST ---
 
+# --- BLOCCO DI TEST (SENZA CACHE) ---
+
 if __name__ == "__main__":
-    import pandas as pd
+    import os
+    import json
     
-    excel_path = 'Lista_movimenti.xls'
-    structure_cache_path = 'structure_cache.json'
-    analysis_cache_path = 'analysis_cache.json'  # File unico per la cache della categorizzazione
+    excel_path = 'account-statement_2026-03-01_2026-05-31_it-it_7d08ca.xlsx'
     
+    # Leggiamo il file Excel
     df = read_excel(excel_path, header=None)
     
-    # 1. Gestione Cache Struttura
-    if os.path.exists(structure_cache_path):
-        print("Caricamento struttura dalla cache locale...")
-        with open(structure_cache_path, 'r', encoding='utf-8') as f:
-            structure = f.read()
-    else:
-        print("Chiamata a Gemini per identificare la struttura...")
-        structure = identify_structure(df)
-        with open(structure_cache_path, 'w', encoding='utf-8') as f:
-            f.write(structure)
-
-    
+    # 1. Chiamata DIRETTISSIMA a Gemini per identificare la struttura (Niente Cache)
+    print("Chiamata a Gemini per identificare la struttura...")
     structure = identify_structure(df)
-
-
-    print("Structure:", structure)
+    print("Structure identificata:", structure)
     
-    # Pulizia iniziale del file Excel
-    transaction_df = parse_bank_statement(df, structure)
-    print("Estratto conto pulito:")
-    print(transaction_df.to_string())
+    # Pulizia e parsing dell'estratto conto (Metodo difensivo con .str.strip())
+    struct_dict = json.loads(structure)
+    header_row = int(struct_dict['header_row'])
     
-    # 2. Gestione Cache Categorizzazione (Identica alla precedente, a file unico!)
-    if os.path.exists(analysis_cache_path):
-        print("Caricamento categorizzazione dalla cache locale...")
-        with open(analysis_cache_path, 'r', encoding='utf-8') as f:
-            analysis_json_str = f.read()
-    else:
-        print("Chiamata a Gemini per la categorizzazione dei movimenti...")
-        analysis_json_str = categorize_transactions(transaction_df)
-        with open(analysis_cache_path, 'w', encoding='utf-8') as f:
-            f.write(analysis_json_str)
-
+    df_clean = df.drop(range(header_row))
+    df_clean.columns = df_clean.iloc[0].astype(str).str.strip()
+    df_clean = df_clean.drop(df_clean.index[0])
     
+    # Aggiorna i nomi nel dizionario per sicurezza contro gli spazi bianchi
+    struct_dict['date_col'] = struct_dict['date_col'].strip()
+    if struct_dict.get('amount_col'): struct_dict['amount_col'] = struct_dict['amount_col'].strip()
+    if struct_dict.get('description_col'): struct_dict['description_col'] = struct_dict['description_col'].strip()
+    if struct_dict.get('income_col'): struct_dict['income_col'] = struct_dict['income_col'].strip()
+    if struct_dict.get('expense_col'): struct_dict['expense_col'] = struct_dict['expense_col'].strip()
+    
+    # Passiamo il DF pronto alla funzione
+    transaction_df = parse_bank_statement(df, json.dumps(struct_dict))
+    print("\nEstratto conto pulito e formattato:")
+    print(transaction_df.head(10).to_string())
+    
+    # 2. Chiamata DIRETTISSIMA a Gemini per la categorizzazione (Niente Cache)
+    print("\nChiamata a Gemini per la categorizzazione dei movimenti...")
     analysis_json_str = categorize_transactions(transaction_df)
 
-            
     # 3. Unione e Stampa dei risultati
     analysis_data = json.loads(analysis_json_str)
-    print(analysis_data)
     ai_df = pd.DataFrame(analysis_data['transactions'])
     
     if not ai_df.empty:

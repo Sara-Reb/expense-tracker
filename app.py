@@ -38,6 +38,11 @@ def upload():
         
         df = parse_file(file)
         structure = identify_structure(df)
+        struct_dict = json.loads(structure)
+        for key in ['date_col', 'amount_col', 'description_col', 'income_col', 'expense_col']:
+            if struct_dict.get(key):
+                struct_dict[key] = struct_dict[key].strip()
+        structure = json.dumps(struct_dict)
         transaction_df = parse_bank_statement(df, structure)
         categorized_transactions = json.loads(categorize_transactions(transaction_df))
         
@@ -52,7 +57,7 @@ def upload():
         for index, row in parsed_df.iterrows():
             
             # 2. CREAZIONE DELL'HASH UNIVOCO
-            hash_string = f"{clean_date}_{row['amount']}_{row['description']}"
+            hash_string = f"{row['date']}_{row['amount']}_{row['description']}"
             row_hash = hashlib.md5(hash_string.encode('utf-8')).hexdigest()
 
             # Controllo duplicati
