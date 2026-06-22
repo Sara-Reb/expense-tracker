@@ -8,6 +8,7 @@ from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy import Integer, Float, Text, Date
 from bank_parser import parse_file, identify_structure, parse_bank_statement, categorize_transactions
+import os
 
 class Base(DeclarativeBase):
     pass
@@ -34,53 +35,68 @@ def index():
 @app.route('/upload', methods=['POST'])
 def upload():
     file = request.files['file']
-    if file and (file.filename.endswith('.csv') or file.filename.endswith('.xlsx') or file.filename.endswith('.xls')):
-        
-        df = parse_file(file)
-        structure = identify_structure(df)
-        struct_dict = json.loads(structure)
-        for key in ['date_col', 'amount_col', 'description_col', 'income_col', 'expense_col']:
-            if struct_dict.get(key):
-                struct_dict[key] = struct_dict[key].strip()
-        structure = json.dumps(struct_dict)
-        transaction_df = parse_bank_statement(df, structure)
-        categorized_transactions = json.loads(categorize_transactions(transaction_df))
-        
-        categories_df = pd.DataFrame(categorized_transactions['transactions'])
-        categories_df.set_index('row_id', inplace=True)
-        parsed_df = transaction_df.join(categories_df)
-        
-        # Sforziamo pandas a normalizzare tutta la colonna 'date' prima di ciclare
-        parsed_df['date'] = pd.to_datetime(parsed_df['date'], errors='coerce')
-        
-        # UN UNICO CICLO FOR CORRETTO
-        for index, row in parsed_df.iterrows():
-            
-            # 2. CREAZIONE DELL'HASH UNIVOCO
-            hash_string = f"{row['date']}_{row['amount']}_{row['description']}"
-            row_hash = hashlib.md5(hash_string.encode('utf-8')).hexdigest()
-
-            # Controllo duplicati
-            exists = Expenses.query.filter_by(transaction_hash=row_hash).first()
-            if exists:
-                continue
-
-            # 3. Salvataggio del record
-            expense = Expenses(
-                date=row['date'].date() if pd.notna(row['date']) else None,
-                category=row['category'],
-                amount=float(row['amount']),
-                description=row['description'],
-                merchant=row['merchant'] if pd.notna(row['merchant']) else None,
-                transaction_hash=row_hash
-            )
-            db.session.add(expense)
-        
-        db.session.commit()
-        return redirect(url_for('dashboard'))
-    else:
+    if not file or not(file.filename.endswith('.csv') or file.filename.endswith('.xlsx') or file.filename.endswith('.xls')):
         message = "Invalid file format. Please upload a CSV or Excel file."
         return render_template('index.html', message=message)
+    try:
+        
+            
+            df = parse_file(file)
+            structure = identify_structure(df)
+            struct_dict = json.loads(structure)
+            for key in ['date_col', 'amount_col', 'description_col', 'income_col', 'expense_col']:
+                if struct_dict.get(key):
+                    struct_dict[key] = struct_dict[key].strip()
+            structure = json.dumps(struct_dict)
+            transaction_df = parse_bank_statement(df, structure)
+
+            # controllo duplicati in transaction_df
+            new_rows = []
+            for index, row in transaction_df.iterrows():
+                hash_string = f"{row['date']}_{row['amount']}_{row['description']}"
+                row_hash = hashlib.md5(hash_string.encode('utf-8')).hexdigest()
+                exists = Expenses.query.filter_by(transaction_hash=row_hash).first()
+                if not exists:
+                    new_rows.append(index)
+            transaction_df=transaction_df.loc[new_rows]
+
+            if transaction_df.empty:
+                return redirect(url_for('dashboard'))
+
+            categorized_transactions = json.loads(categorize_transactions(transaction_df))
+            
+            categories_df = pd.DataFrame(categorized_transactions['transactions'])
+            categories_df.set_index('row_id', inplace=True)
+            parsed_df = transaction_df.join(categories_df)
+            
+            # Sforziamo pandas a normalizzare tutta la colonna 'date' prima di ciclare
+            parsed_df['date'] = pd.to_datetime(parsed_df['date'], errors='coerce')
+            
+            for index, row in parsed_df.iterrows():
+                
+                # 2. CREAZIONE DELL'HASH UNIVOCO
+                hash_string = f"{row['date']}_{row['amount']}_{row['description']}"
+                row_hash = hashlib.md5(hash_string.encode('utf-8')).hexdigest()
+
+
+                # 3. Salvataggio del record
+                expense = Expenses(
+                    date=row['date'].date() if pd.notna(row['date']) else None,
+                    category=row['category'],
+                    amount=float(row['amount']),
+                    description=row['description'],
+                    merchant=row['merchant'] if pd.notna(row['merchant']) else None,
+                    transaction_hash=row_hash
+                )
+                db.session.add(expense)
+            
+            db.session.commit()
+            return redirect(url_for('dashboard'))
+    except Exception as e:
+        print(f"Errore durante l'upload: {e}")
+        message = "Si è verificato un errore durante l'elaborazione del file. Riprova"
+        return render_template('index.html', message=message)
+    
     
 
 @app.route('/dashboard')
