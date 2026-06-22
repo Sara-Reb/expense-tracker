@@ -39,64 +39,75 @@ def upload():
         message = "Invalid file format. Please upload a CSV or Excel file."
         return render_template('index.html', message=message)
     try:
-        
-            
-            df = parse_file(file)
-            structure = identify_structure(df)
-            struct_dict = json.loads(structure)
-            for key in ['date_col', 'amount_col', 'description_col', 'income_col', 'expense_col']:
-                if struct_dict.get(key):
-                    struct_dict[key] = struct_dict[key].strip()
-            structure = json.dumps(struct_dict)
-            transaction_df = parse_bank_statement(df, structure)
+        df = parse_file(file)
+        structure = identify_structure(df)
+        struct_dict = json.loads(structure)
+        for key in ['date_col', 'amount_col', 'description_col', 'income_col', 'expense_col']:
+            if struct_dict.get(key):
+                struct_dict[key] = struct_dict[key].strip()
+        structure = json.dumps(struct_dict)
+        transaction_df = parse_bank_statement(df, structure)
 
-            # controllo duplicati in transaction_df
-            new_rows = []
-            for index, row in transaction_df.iterrows():
-                hash_string = f"{row['date']}_{row['amount']}_{row['description']}"
-                row_hash = hashlib.md5(hash_string.encode('utf-8')).hexdigest()
-                exists = Expenses.query.filter_by(transaction_hash=row_hash).first()
-                if not exists:
-                    new_rows.append(index)
-            transaction_df=transaction_df.loc[new_rows]
-
-            if transaction_df.empty:
-                return redirect(url_for('dashboard'))
-
-            categorized_transactions = json.loads(categorize_transactions(transaction_df))
+        # 1. CONTROLLO DUPLICATI (Standardizzato)
+        new_rows = []
+        for index, row in transaction_df.iterrows():
+            clean_date = pd.to_datetime(row['date']).strftime('%Y-%m-%d')
+            clean_amount = float(row['amount'])
+            hash_string = f"{clean_date}_{clean_amount}_{row['description']}"
+            row_hash = hashlib.md5(hash_string.encode('utf-8')).hexdigest()
             
-            categories_df = pd.DataFrame(categorized_transactions['transactions'])
-            categories_df.set_index('row_id', inplace=True)
-            parsed_df = transaction_df.join(categories_df)
-            
-            # Sforziamo pandas a normalizzare tutta la colonna 'date' prima di ciclare
-            parsed_df['date'] = pd.to_datetime(parsed_df['date'], errors='coerce')
-            
-            for index, row in parsed_df.iterrows():
+            exists = Expenses.query.filter_by(transaction_hash=row_hash).first()
+            if not exists:
+                new_rows.append(index)
                 
-                # 2. CREAZIONE DELL'HASH UNIVOCO
-                hash_string = f"{row['date']}_{row['amount']}_{row['description']}"
-                row_hash = hashlib.md5(hash_string.encode('utf-8')).hexdigest()
+        transaction_df = transaction_df.loc[new_rows].reset_index(drop=True)
 
-
-                # 3. Salvataggio del record
-                expense = Expenses(
-                    date=row['date'].date() if pd.notna(row['date']) else None,
-                    category=row['category'],
-                    amount=float(row['amount']),
-                    description=row['description'],
-                    merchant=row['merchant'] if pd.notna(row['merchant']) else None,
-                    transaction_hash=row_hash
-                )
-                db.session.add(expense)
-            
-            db.session.commit()
+        if transaction_df.empty:
             return redirect(url_for('dashboard'))
+
+        # 2. CATEGORIZZAZIONE GEMINI
+        categorized_transactions = json.loads(categorize_transactions(transaction_df))
+        categories_df = pd.DataFrame(categorized_transactions['transactions'])
+        categories_df.set_index('row_id', inplace=True)
+        parsed_df = transaction_df.join(categories_df)
+        
+        parsed_df['date'] = pd.to_datetime(parsed_df['date'], errors='coerce')
+        
+        # 3. SALVATAGGIO RECORDI (Utilizza la stessa identica formattazione dell'hash)
+        for index, row in parsed_df.iterrows():
+            if pd.isna(row['date']):
+                continue
+                
+            # Estraggo la data pulita in formato YYYY-MM-DD per garantire l'uniformità dell'hash
+            clean_date = row['date'].strftime('%Y-%m-%d')
+            clean_amount = float(row['amount'])
+            
+            # Rigenero l'hash usando la stessa identica stringa standardizzata del controllo iniziale
+            hash_string = f"{clean_date}_{clean_amount}_{row['description']}"
+            row_hash = hashlib.md5(hash_string.encode('utf-8')).hexdigest()
+
+            # Controllo difensivo dell'ultimo secondo per evitare crash in qualsiasi situazione
+            exists_last_minute = Expenses.query.filter_by(transaction_hash=row_hash).first()
+            if exists_last_minute:
+                continue
+
+            expense = Expenses(
+                date=row['date'].date(),
+                category=row['category'],
+                amount=clean_amount,
+                description=row['description'],
+                merchant=row['merchant'] if pd.notna(row['merchant']) else None,
+                transaction_hash=row_hash
+            )
+            db.session.add(expense)
+        
+        db.session.commit()
+        return redirect(url_for('dashboard'))
+        
     except Exception as e:
         print(f"Errore durante l'upload: {e}")
         message = "Si è verificato un errore durante l'elaborazione del file. Riprova"
         return render_template('index.html', message=message)
-    
     
 
 @app.route('/dashboard')
