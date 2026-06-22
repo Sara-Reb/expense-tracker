@@ -5,3 +5,6 @@ instance/
 *.xls
 *.xlsx
 *.csv
+
+/node_modules
+/__pycache__
