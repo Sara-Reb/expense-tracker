@@ -6,6 +6,7 @@ import pandas as pd
 from flask import Flask, render_template, request, redirect, url_for, jsonify, flash
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy import Integer, Float, Text, Date, ForeignKey
 from bank_parser import parse_file, identify_structure, parse_bank_statement, categorize_transactions
 import os
@@ -39,7 +40,7 @@ class Users(db.Model,UserMixin):
 
 @login_manager.user_loader
 def load_user(user_id):
-    return Users.query.get(int(user_id))
+    return db.session.get(Users, int(user_id))
 
 
 class Expenses(db.Model):
@@ -149,7 +150,7 @@ def upload():
         for index, row in transaction_df.iterrows():
             clean_date = pd.to_datetime(row['date']).strftime('%Y-%m-%d')
             clean_amount = float(row['amount'])
-            hash_string = f"{clean_date}_{clean_amount}_{row['description']}"
+            hash_string = f"{current_user.id}_{clean_date}_{clean_amount}_{row['description']}"
             row_hash = hashlib.md5(hash_string.encode('utf-8')).hexdigest()
             
             exists = Expenses.query.filter_by(transaction_hash=row_hash).first()
@@ -179,7 +180,7 @@ def upload():
             clean_amount = float(row['amount'])
             
             # Rigenero l'hash usando la stessa identica stringa standardizzata del controllo iniziale
-            hash_string = f"{clean_date}_{clean_amount}_{row['description']}"
+            hash_string = f"{current_user.id}_{clean_date}_{clean_amount}_{row['description']}"
             row_hash = hashlib.md5(hash_string.encode('utf-8')).hexdigest()
 
 
@@ -192,7 +193,12 @@ def upload():
                 merchant=row['merchant'] if pd.notna(row['merchant']) else None,
                 transaction_hash=row_hash
             )
-            db.session.add(expense)
+            try:
+                db.session.add(expense)
+                db.session.flush()  # forza il controllo del vincolo subito
+            except IntegrityError:
+                db.session.rollback()
+                continue
         
         db.session.commit()
         return redirect(url_for('dashboard'))
