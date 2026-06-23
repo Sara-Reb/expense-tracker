@@ -3,7 +3,7 @@ import hashlib
 import json
 import pandas as pd
 
-from flask import Flask, render_template, request, redirect, url_for, jsonify
+from flask import Flask, render_template, request, redirect, url_for, jsonify, flash
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy import Integer, Float, Text, Date, ForeignKey
@@ -118,21 +118,22 @@ def login():
 @login_required
 def logout():
     logout_user()
-    return redirect(url_for('index'))
-
+    return redirect(url_for('login'))
 
 @app.route('/')
-@login_required
 def index():
-    return render_template('index.html')
+    if current_user.is_authenticated:
+        return redirect(url_for('dashboard'))
+    return redirect(url_for('login'))
+
 
 @app.route('/upload', methods=['POST'])
 @login_required
 def upload():
     file = request.files['file']
     if not file or not(file.filename.endswith('.csv') or file.filename.endswith('.xlsx') or file.filename.endswith('.xls')):
-        message = "Invalid file format. Please upload a CSV or Excel file."
-        return render_template('index.html', message=message)
+        flash("Formato file non valido. Carica un file CSV o Excel.", "danger")
+        return redirect(url_for('dashboard'))
     try:
         df = parse_file(file)
         structure = identify_structure(df)
@@ -198,8 +199,8 @@ def upload():
         
     except Exception as e:
         print(f"Errore durante l'upload: {e}")
-        message = "Si è verificato un errore durante l'elaborazione del file. Riprova"
-        return render_template('index.html', message=message)
+        flash("Errore durante l'elaborazione del file. Riprova.", "danger")
+        return redirect(url_for('dashboard'))
     
 @app.route('/dashboard')
 @login_required

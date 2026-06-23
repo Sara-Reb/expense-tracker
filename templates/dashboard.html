@@ -59,6 +59,16 @@ block head %} {{ super() }}
       </span>
     </div>
   </div>
+  <div class="border-bottom pb-3 mb-4">
+    <button
+      type="button"
+      class="btn btn-primary"
+      data-bs-toggle="modal"
+      data-bs-target="#uploadModal"
+    >
+      <i class="bi bi-upload me-1"></i> Carica estratto conto
+    </button>
+  </div>
 
   <div class="row g-4 mb-4">
     <div class="col-lg-6">
@@ -98,18 +108,20 @@ block head %} {{ super() }}
       class="card-header bg-white py-3 px-3 d-flex justify-content-between align-items-center"
     >
       <h5 class="card-title h6 fw-bold text-dark mb-0">Registro Movimenti</h5>
-      <span class="text-muted small">Mostrate tutte le transazioni</span>
     </div>
     <div class="card-body p-0">
-      <div class="table-responsive table-scroll-container overflow-y-auto">
+      <div
+        class="table-responsive table-scroll-container"
+        style="overflow-y: auto; max-height: 400px"
+      >
         <table class="table table-hover align-middle mb-0 table-sm fs-7">
           <thead
             class="table-light sticky-top border-bottom"
             style="z-index: 5"
           >
             <tr>
-              <th style="width: 15%" class="py-2 ps-3">Data</th>
-              <th style="width: 45%" class="py-2">Esercente / Entità</th>
+              <th style="width: 30%" class="py-2 ps-3">Data</th>
+              <th style="width: 30%" class="py-2">Esercente / Entità</th>
               <th style="width: 20%" class="py-2">Categoria</th>
               <th style="width: 20%" class="text-end py-2 pe-3">Importo</th>
             </tr>
@@ -127,13 +139,13 @@ block head %} {{ super() }}
                 {{ t.date.strftime('%d-%m-%y') }}
               </td>
               <td class="py-2.5">
-                <span class="text-dark fw-semibold"
+                <span class="text-dark fw-semibold text-wrap"
                   >{{ t.merchant or 'Operazione Bancaria' }}</span
                 >
               </td>
-              <td class="py-2.5">
+              <td class="py-2.5 text-center">
                 <span
-                  class="badge bg-light text-dark border px-2 py-1 fw-normal rounded-1"
+                  class="badge bg-light text-dark border px-2 py-1 fw-normal rounded-1 text-wrap"
                 >
                   {{ t.category }}
                 </span>
@@ -180,6 +192,41 @@ block head %} {{ super() }}
             {% endfor %}
           </tbody>
         </table>
+      </div>
+    </div>
+  </div>
+  <div class="modal fade" id="uploadModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Carica estratto conto</h5>
+          <button
+            type="button"
+            class="btn-close"
+            data-bs-dismiss="modal"
+          ></button>
+        </div>
+        <div class="modal-body">
+          <form method="POST" action="/upload" enctype="multipart/form-data">
+            <div class="mb-3">
+              <label class="form-label">Seleziona file</label>
+              <input
+                type="file"
+                name="file"
+                class="form-control"
+                accept=".csv,.xlsx,.xls"
+              />
+              <small class="text-muted"
+                >Formati accettati: CSV, Excel (.xlsx, .xls)</small
+              >
+            </div>
+            <div class="d-grid">
+              <button type="submit" class="btn btn-primary">
+                Carica e analizza
+              </button>
+            </div>
+          </form>
+        </div>
       </div>
     </div>
   </div>
