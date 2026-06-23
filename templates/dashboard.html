@@ -73,33 +73,9 @@ block head %} {{ super() }}
           <div class="chart-container">
             <canvas id="categories"></canvas>
           </div>
-          <script>
-            const pieCtx = document.getElementById('categories');
-            const spendingByCategory = {{ spending_by_category | tojson }};
-            const pieData = {
-              labels: Object.keys(spendingByCategory),
-              datasets: [{
-                label: 'Spending by Category',
-                data: Object.values(spendingByCategory),
-              }]
-            }
-            const pieConfig = {
-              type: 'pie',
-              data: pieData,
-              options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                  legend: { position: 'right', labels: { boxWidth: 12, font: { size: 11 } } }
-                }
-              }
-            }
-            const categoriesChart = new Chart(pieCtx, pieConfig);
-          </script>
         </div>
       </div>
     </div>
-
     <div class="col-lg-6">
       <div class="card shadow-sm border-1 h-100">
         <div class="card-header bg-white py-2.5 px-3 border-bottom-0">
@@ -112,37 +88,6 @@ block head %} {{ super() }}
           <div class="chart-container">
             <canvas id="monthly"></canvas>
           </div>
-          <script>
-            const barCtx = document.getElementById('monthly')
-            const monthlySpending = {{ monthly_spending | tojson }};
-            const monthlyIncome = {{ monthly_income | tojson }};
-            const monthsLabels = Object.keys(monthlySpending);
-            const barData= {
-              labels: Object.keys(monthlySpending),
-              datasets:[
-                {
-                  label: 'Income',
-                  data: Object.values(monthlyIncome)
-                },
-                {
-                  label: 'Spendings',
-                  data: Object.values(monthlySpending)
-                }
-              ]
-            };
-            const barConfig = {
-              type: 'bar',
-              data: barData,
-              options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                  legend: { position: 'top', labels: { boxWidth: 12, font: { size: 11 } } }
-                }
-              }
-            };
-            const monthlyChart = new Chart(barCtx, barConfig);
-          </script>
         </div>
       </div>
     </div>
@@ -239,4 +184,93 @@ block head %} {{ super() }}
     </div>
   </div>
 </div>
+
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    fetch("/api/v1/analytics")
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error("Errore nel caricamento dei dati analitici");
+        }
+        return response.json(); // CORRETTO: aggiunte le parentesi ()
+      })
+      .then((res) => {
+        if (res.status === "success") {
+          const analytics = res.data;
+          renderCategoryChart(analytics.spending_by_category);
+          renderMonthlyChart(analytics.monthly_analytics);
+        }
+      })
+      .catch((err) => console.error("Errore nel fetch analitiche:", err));
+  });
+
+  function renderCategoryChart(spendingByCategory) {
+    const ctx = document.getElementById("categories"); // CORRETTO: l'id del canvas è plurale
+
+    if (!ctx) return;
+
+    new Chart(ctx, {
+      type: "doughnut",
+      data: {
+        labels: Object.keys(spendingByCategory),
+        datasets: [
+          {
+            label: "Spese per Categoria",
+            data: Object.values(spendingByCategory),
+            backgroundColor: [
+              "#FF6384",
+              "#36A2EB",
+              "#FFCE56",
+              "#4BC0C0",
+              "#9966FF",
+              "#FF9F40",
+              "#C9CBCF",
+              "#475569",
+            ],
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+      },
+    });
+  }
+
+  function renderMonthlyChart(monthlyAnalytics) {
+    const ctx = document.getElementById("monthly");
+
+    if (!ctx) return;
+
+    const labels = monthlyAnalytics.months; // CORRETTO: corretto l'errore di battitura da monthd a months
+    const spendingData = labels.map((m) => monthlyAnalytics.spending[m] || 0);
+    const incomeData = labels.map((m) => monthlyAnalytics.income[m] || 0);
+
+    new Chart(ctx, {
+      type: "bar",
+      data: {
+        labels: labels,
+        datasets: [
+          {
+            label: "Uscite (€)",
+            data: spendingData,
+            backgroundColor: "#dc3545",
+          },
+          {
+            label: "Entrate (€)",
+            data: incomeData,
+            backgroundColor: "#198754",
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          y: { beginAtZero: true },
+        },
+      },
+    });
+  }
+</script>
 {% endblock %}
