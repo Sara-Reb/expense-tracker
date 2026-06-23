@@ -1,0 +1,41 @@
+{% extends "layout.html" %} {% block title %} Login {% endblock %} {%block content
+%}
+<div class="container-fluid">
+  <form class="d-flex flex-column gap-4 my-5" method="POST" action="/login">
+    <small class="d-block text-danger text-center">{{check_message}}</small>
+    <div>
+      <input
+        autocomplete="off"
+        type="text"
+        autofocus
+        name="username"
+        placeholder="Username"
+        class="form-control"
+        required
+      />
+      <small class="d-block text-danger">{{username_message}}</small>
+    </div>
+    <div>
+      <input
+        autocomplete="off"
+        type="password"
+        autofocus
+        name="password"
+        placeholder="password"
+        class="form-control"
+        required
+      />
+      <small class="d-block text-danger">{{password_message}}</small>
+    </div>
+    
+    <div>
+      <button class="btn btn-primary w-100" type="submit">Accedi</button>
+      
+    </div>
+    <div class="p-3 border-top text-center">
+      <p>
+        Non hai un account? <a href="/register">Registrati qui</a>
+      </p>
+  </form>
+  </div>
+{%endblock%}
