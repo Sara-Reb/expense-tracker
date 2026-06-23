@@ -59,6 +59,16 @@ block head %} {{ super() }}
       </span>
     </div>
   </div>
+  <div class="border-bottom pb-3 mb-4">
+    <button
+      type="button"
+      class="btn btn-primary"
+      data-bs-toggle="modal"
+      data-bs-target="#uploadModal"
+    >
+      <i class="bi bi-upload me-1"></i> Carica estratto conto
+    </button>
+  </div>
 
   <div class="row g-4 mb-4">
     <div class="col-lg-6">
@@ -73,33 +83,9 @@ block head %} {{ super() }}
           <div class="chart-container">
             <canvas id="categories"></canvas>
           </div>
-          <script>
-            const pieCtx = document.getElementById('categories');
-            const spendingByCategory = {{ spending_by_category | tojson }};
-            const pieData = {
-              labels: Object.keys(spendingByCategory),
-              datasets: [{
-                label: 'Spending by Category',
-                data: Object.values(spendingByCategory),
-              }]
-            }
-            const pieConfig = {
-              type: 'pie',
-              data: pieData,
-              options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                  legend: { position: 'right', labels: { boxWidth: 12, font: { size: 11 } } }
-                }
-              }
-            }
-            const categoriesChart = new Chart(pieCtx, pieConfig);
-          </script>
         </div>
       </div>
     </div>
-
     <div class="col-lg-6">
       <div class="card shadow-sm border-1 h-100">
         <div class="card-header bg-white py-2.5 px-3 border-bottom-0">
@@ -112,37 +98,6 @@ block head %} {{ super() }}
           <div class="chart-container">
             <canvas id="monthly"></canvas>
           </div>
-          <script>
-            const barCtx = document.getElementById('monthly')
-            const monthlySpending = {{ monthly_spending | tojson }};
-            const monthlyIncome = {{ monthly_income | tojson }};
-            const monthsLabels = Object.keys(monthlySpending);
-            const barData= {
-              labels: Object.keys(monthlySpending),
-              datasets:[
-                {
-                  label: 'Income',
-                  data: Object.values(monthlyIncome)
-                },
-                {
-                  label: 'Spendings',
-                  data: Object.values(monthlySpending)
-                }
-              ]
-            };
-            const barConfig = {
-              type: 'bar',
-              data: barData,
-              options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                  legend: { position: 'top', labels: { boxWidth: 12, font: { size: 11 } } }
-                }
-              }
-            };
-            const monthlyChart = new Chart(barCtx, barConfig);
-          </script>
         </div>
       </div>
     </div>
@@ -153,18 +108,20 @@ block head %} {{ super() }}
       class="card-header bg-white py-3 px-3 d-flex justify-content-between align-items-center"
     >
       <h5 class="card-title h6 fw-bold text-dark mb-0">Registro Movimenti</h5>
-      <span class="text-muted small">Mostrate tutte le transazioni</span>
     </div>
     <div class="card-body p-0">
-      <div class="table-responsive table-scroll-container overflow-y-auto">
+      <div
+        class="table-responsive table-scroll-container"
+        style="overflow-y: auto; max-height: 400px"
+      >
         <table class="table table-hover align-middle mb-0 table-sm fs-7">
           <thead
             class="table-light sticky-top border-bottom"
             style="z-index: 5"
           >
             <tr>
-              <th style="width: 15%" class="py-2 ps-3">Data</th>
-              <th style="width: 45%" class="py-2">Esercente / Entità</th>
+              <th style="width: 30%" class="py-2 ps-3">Data</th>
+              <th style="width: 30%" class="py-2">Esercente / Entità</th>
               <th style="width: 20%" class="py-2">Categoria</th>
               <th style="width: 20%" class="text-end py-2 pe-3">Importo</th>
             </tr>
@@ -182,13 +139,13 @@ block head %} {{ super() }}
                 {{ t.date.strftime('%d-%m-%y') }}
               </td>
               <td class="py-2.5">
-                <span class="text-dark fw-semibold"
+                <span class="text-dark fw-semibold text-wrap"
                   >{{ t.merchant or 'Operazione Bancaria' }}</span
                 >
               </td>
-              <td class="py-2.5">
+              <td class="py-2.5 text-center">
                 <span
-                  class="badge bg-light text-dark border px-2 py-1 fw-normal rounded-1"
+                  class="badge bg-light text-dark border px-2 py-1 fw-normal rounded-1 text-wrap"
                 >
                   {{ t.category }}
                 </span>
@@ -238,5 +195,129 @@ block head %} {{ super() }}
       </div>
     </div>
   </div>
+  <div class="modal fade" id="uploadModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Carica estratto conto</h5>
+          <button
+            type="button"
+            class="btn-close"
+            data-bs-dismiss="modal"
+          ></button>
+        </div>
+        <div class="modal-body">
+          <form method="POST" action="/upload" enctype="multipart/form-data">
+            <div class="mb-3">
+              <label class="form-label">Seleziona file</label>
+              <input
+                type="file"
+                name="file"
+                class="form-control"
+                accept=".csv,.xlsx,.xls"
+              />
+              <small class="text-muted"
+                >Formati accettati: CSV, Excel (.xlsx, .xls)</small
+              >
+            </div>
+            <div class="d-grid">
+              <button type="submit" class="btn btn-primary">
+                Carica e analizza
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
+
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    fetch("/api/v1/analytics")
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error("Errore nel caricamento dei dati analitici");
+        }
+        return response.json(); // CORRETTO: aggiunte le parentesi ()
+      })
+      .then((res) => {
+        if (res.status === "success") {
+          const analytics = res.data;
+          renderCategoryChart(analytics.spending_by_category);
+          renderMonthlyChart(analytics.monthly_analytics);
+        }
+      })
+      .catch((err) => console.error("Errore nel fetch analitiche:", err));
+  });
+
+  function renderCategoryChart(spendingByCategory) {
+    const ctx = document.getElementById("categories"); // CORRETTO: l'id del canvas è plurale
+
+    if (!ctx) return;
+
+    new Chart(ctx, {
+      type: "doughnut",
+      data: {
+        labels: Object.keys(spendingByCategory),
+        datasets: [
+          {
+            label: "Spese per Categoria",
+            data: Object.values(spendingByCategory),
+            backgroundColor: [
+              "#FF6384",
+              "#36A2EB",
+              "#FFCE56",
+              "#4BC0C0",
+              "#9966FF",
+              "#FF9F40",
+              "#C9CBCF",
+              "#475569",
+            ],
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+      },
+    });
+  }
+
+  function renderMonthlyChart(monthlyAnalytics) {
+    const ctx = document.getElementById("monthly");
+
+    if (!ctx) return;
+
+    const labels = monthlyAnalytics.months; // CORRETTO: corretto l'errore di battitura da monthd a months
+    const spendingData = labels.map((m) => monthlyAnalytics.spending[m] || 0);
+    const incomeData = labels.map((m) => monthlyAnalytics.income[m] || 0);
+
+    new Chart(ctx, {
+      type: "bar",
+      data: {
+        labels: labels,
+        datasets: [
+          {
+            label: "Uscite (€)",
+            data: spendingData,
+            backgroundColor: "#dc3545",
+          },
+          {
+            label: "Entrate (€)",
+            data: incomeData,
+            backgroundColor: "#198754",
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          y: { beginAtZero: true },
+        },
+      },
+    });
+  }
+</script>
 {% endblock %}
