@@ -75,9 +75,30 @@ def identify_structure(df):
 
 def parse_date(x):
     try:
-        return pd.to_datetime(x)
-    except:
-        return dateparser.parse(str(x), languages=['it'])
+        parsed = pd.to_datetime(x, dayfirst=True, errors='raise')
+        return parsed
+    except (ValueError, TypeError):
+        return dateparser.parse(
+            str(x),
+            languages=['it'],
+            settings={'DATE_ORDER': 'DMY'}
+        )
+    
+def normalize_italian_amount(series: pd.Series) -> pd.Series:
+    cleaned = series.astype(str).str.strip()
+
+    # Se la stringa contiene sia '.' che ',' assumiamo formato IT:
+    # punto = separatore migliaia, virgola = separatore decimale
+    has_it_format = cleaned.str.contains(r'\.\d{3},\d{2}$') | cleaned.str.contains(r',\d{1,2}$')
+
+    cleaned_it = (
+        cleaned.str.replace('.', '', regex=False)
+               .str.replace(',', '.', regex=False)
+    )
+    result = cleaned.copy()
+    result[has_it_format] = cleaned_it[has_it_format]
+
+    return pd.to_numeric(result, errors='coerce')
 
 
 def parse_bank_statement(df, structure):
@@ -88,24 +109,22 @@ def parse_bank_statement(df, structure):
     amount_col = structure['amount_col']
     description_col = structure['description_col']
     df = df.drop(range(header_row)) 
-    print(f"DataFrame  after dropping header rows: {df.head(10).to_string()}")
     df.columns = df.iloc[0]
-    print(f"DataFrame after setting header row: {df.head(10).to_string()}")
     df.columns = df.columns.astype(str).str.strip()
     df = df.drop(df.index[0])
     
     if structure.get('income_col') and structure.get('expense_col'):
         transaction_df = df[[date_col, structure['income_col'], structure['expense_col'], description_col]]
         transaction_df.columns = ['date', 'income', 'expense', 'description']
-        transaction_df['income'] = pd.to_numeric(transaction_df['income'], errors='coerce').fillna(0)
-        transaction_df['expense'] = pd.to_numeric(transaction_df['expense'], errors='coerce').fillna(0)
+        transaction_df['income'] = normalize_italian_amount(transaction_df['income']).fillna(0)
+        transaction_df['expense'] = normalize_italian_amount(transaction_df['expense']).fillna(0)   
         transaction_df['amount'] = transaction_df['expense'] + transaction_df['income']
         transaction_df = transaction_df.drop(columns=['income', 'expense'])
     else:
         
         transaction_df = df[[date_col, amount_col, description_col]]
         transaction_df.columns = ['date', 'amount', 'description']
-        transaction_df['amount'] = pd.to_numeric(transaction_df['amount'], errors='coerce')
+        transaction_df['amount'] = normalize_italian_amount(transaction_df['amount'])
     
 
     transaction_df = transaction_df.dropna(subset=['amount', 'date'])

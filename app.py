@@ -13,6 +13,8 @@ import os
 from flask_login import LoginManager,UserMixin,login_user,logout_user,login_required, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from dotenv import load_dotenv
+from flask_wtf import CSRFProtect
+from werkzeug.exceptions import RequestEntityTooLarge
 
 
 
@@ -22,14 +24,25 @@ class Base(DeclarativeBase):
 db = SQLAlchemy(model_class=Base)
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///expenses.db'
+database_url = os.getenv('DATABASE_URL', 'sqlite:///expenses.db')
+# Render/Heroku a volte restituiscono ancora lo schema legacy 'postgres://'
+if database_url.startswith('postgres://'):
+    database_url = database_url.replace('postgres://', 'postgresql://', 1)
+
+app.config['SQLALCHEMY_DATABASE_URI'] = database_url
+app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024 
 load_dotenv()
 app.config['SECRET_KEY']=os.getenv('SECRET_KEY')
+if not app.config['SECRET_KEY']:
+    raise RuntimeError(
+        "SECRET_KEY non impostata. Aggiungila al file .env prima di avviare l'app."
+    )
 db.init_app(app)
 login_manager = LoginManager()
 login_manager.login_view='login'
 login_manager.init_app(app)
-
+csrf = CSRFProtect()
+csrf.init_app(app)
 
 class Users(db.Model,UserMixin):
     __tablename__='users'
@@ -54,6 +67,12 @@ class Expenses(db.Model):
     merchant: Mapped[str] = mapped_column(Text, nullable=True)
     transaction_hash: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
 
+
+
+@app.errorhandler(RequestEntityTooLarge)
+def handle_file_too_large(e):
+    flash("Il file supera la dimensione massima consentita (10 MB).", "danger")
+    return redirect(url_for('dashboard'))
 
 
 @app.route('/register', methods = ['GET','POST'])
@@ -262,4 +281,5 @@ with app.app_context():
     db.create_all()
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    debug_mode = os.getenv("FLASK_DEBUG", "false").lower() == "true"
+    app.run(debug=debug_mode)

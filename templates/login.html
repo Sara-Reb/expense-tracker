@@ -1,7 +1,8 @@
-{% extends "layout.html" %} {% block title %} Login {% endblock %} {%block content
-%}
+{% extends "layout.html" %} {% block title %} Login {% endblock %} {%block
+content %}
 <div class="container-fluid">
   <form class="d-flex flex-column gap-4 my-5" method="POST" action="/login">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
     <small class="d-block text-danger text-center">{{check_message}}</small>
     <div>
       <input
@@ -27,15 +28,13 @@
       />
       <small class="d-block text-danger">{{password_message}}</small>
     </div>
-    
+
     <div>
       <button class="btn btn-primary w-100" type="submit">Accedi</button>
-      
     </div>
     <div class="p-3 border-top text-center">
-      <p>
-        Non hai un account? <a href="/register">Registrati qui</a>
-      </p>
+      <p>Non hai un account? <a href="/register">Registrati qui</a></p>
+    </div>
   </form>
-  </div>
-{%endblock%}
+  {%endblock%}
+</div>
