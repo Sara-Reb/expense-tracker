@@ -266,7 +266,7 @@ def api_analytics():
             'data':{
                 'spending_by_category': spending_by_category,
                 'monthly_analytics':{
-                    'months':sorted(list(set(list(monthly_spending.keys())))),
+                    'months': sorted(set(monthly_spending) | set(monthly_income)),
                     'spending':monthly_spending,
                     'income':monthly_income
                 }
