@@ -37,6 +37,10 @@ if not app.config['SECRET_KEY']:
     raise RuntimeError(
         "SECRET_KEY non impostata. Aggiungila al file .env prima di avviare l'app."
     )
+gemini_key = os.getenv('GEMINI_API_KEY')
+if not gemini_key:
+    raise RuntimeError("GEMINI_API_KEY non impostata. Aggiungila al file .env prima di avviare l'app.")
+
 db.init_app(app)
 login_manager = LoginManager()
 login_manager.login_view='login'
@@ -170,19 +174,24 @@ def upload():
         structure = json.dumps(struct_dict)
         transaction_df = parse_bank_statement(df, structure)
 
-        # 1. CONTROLLO DUPLICATI (Standardizzato)
-        new_rows = []
+        hashes = []
         for index, row in transaction_df.iterrows():
             clean_date = pd.to_datetime(row['date']).strftime('%Y-%m-%d')
             clean_amount = float(row['amount'])
             hash_string = f"{current_user.id}_{clean_date}_{clean_amount}_{row['description']}"
             row_hash = hashlib.md5(hash_string.encode('utf-8')).hexdigest()
-            
-            exists = Expenses.query.filter_by(transaction_hash=row_hash).first()
-            if not exists:
-                new_rows.append(index)
-                
-        transaction_df = transaction_df.loc[new_rows].reset_index(drop=True)
+            hashes.append(row_hash)
+
+        transaction_df['transaction_hash'] = hashes
+
+        existing_records = Expenses.query.filter(Expenses.transaction_hash.in_(hashes)).all()
+
+        existing_hashes = []
+        for record in existing_records:
+            existing_hashes.append(record.transaction_hash)
+
+        transaction_df = transaction_df[~transaction_df['transaction_hash'].isin(existing_hashes)]
+        transaction_df = transaction_df.reset_index(drop=True)
 
         if transaction_df.empty:
             return redirect(url_for('dashboard'))
@@ -195,16 +204,13 @@ def upload():
         
         parsed_df['date'] = pd.to_datetime(parsed_df['date'], errors='coerce')
         
-        # 3. SALVATAGGIO RECORD (Utilizza la stessa identica formattazione dell'hash)
         for index, row in parsed_df.iterrows():
             if pd.isna(row['date']):
                 continue
                 
-            # Estraggo la data pulita in formato YYYY-MM-DD per garantire l'uniformità dell'hash
             clean_date = row['date'].strftime('%Y-%m-%d')
             clean_amount = float(row['amount'])
             
-            # Rigenero l'hash usando la stessa identica stringa standardizzata del controllo iniziale
             hash_string = f"{current_user.id}_{clean_date}_{clean_amount}_{row['description']}"
             row_hash = hashlib.md5(hash_string.encode('utf-8')).hexdigest()
 
@@ -218,12 +224,18 @@ def upload():
                 merchant=row['merchant'] if pd.notna(row['merchant']) else None,
                 transaction_hash=row_hash
             )
-            try:
-                db.session.add(expense)
-                db.session.flush()  # forza il controllo del vincolo subito
-            except IntegrityError:
-                db.session.rollback()
-                continue
+            for index, row in parsed_df.iterrows():
+                if pd.isna(row['date']):
+                    continue
+                ...
+                expense = Expenses(...)
+                try:
+                    with db.session.begin_nested():
+                        db.session.add(expense)
+                except IntegrityError:
+                    continue 
+
+            db.session.commit()
         
         db.session.commit()
         return redirect(url_for('dashboard'))
