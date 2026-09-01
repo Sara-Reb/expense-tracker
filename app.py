@@ -24,6 +24,7 @@ class Base(DeclarativeBase):
 db = SQLAlchemy(model_class=Base)
 
 app = Flask(__name__)
+load_dotenv()
 database_url = os.getenv('DATABASE_URL', 'sqlite:///expenses.db')
 # Render/Heroku a volte restituiscono ancora lo schema legacy 'postgres://'
 if database_url.startswith('postgres://'):
@@ -31,7 +32,6 @@ if database_url.startswith('postgres://'):
 
 app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024 
-load_dotenv()
 app.config['SECRET_KEY']=os.getenv('SECRET_KEY')
 if not app.config['SECRET_KEY']:
     raise RuntimeError(
@@ -80,7 +80,7 @@ def register():
     if request.method == 'GET':
         return render_template('register.html')
     else:
-        username = request.form.get('username').strip().lower()
+        username = (request.form.get('username') or '').strip().lower()
         password = request.form.get('password')
         confirmation = request.form.get('confirmation')
 
@@ -111,28 +111,25 @@ def register():
                 return redirect(url_for('login'))
 
 
-@app.route('/login', methods=('GET','POST'))
+@app.route('/login', methods=('POST'))
 def login():
-    if request.method=='GET':
-        return render_template('login.html')
-    else:
-        username = request.form.get('username').strip().lower()
-        password = request.form.get('password')
+    username = (request.form.get('username') or '').strip().lower()
+    password = request.form.get('password')
 
-        if not username:
-            message = 'Nome utente richiesto'
-            return render_template('/login.html', username_message=message)
-        elif not password:
-            message = 'Password richiesta'
-            return render_template('/login.html', password_message=message)
+    if not username:
+        message = 'Nome utente richiesto'
+        return render_template('/login.html', username_message=message)
+    elif not password:
+        message = 'Password richiesta'
+        return render_template('/login.html', password_message=message)
+    else:
+        user = Users.query.filter_by(username = username).first()
+        if not user or not check_password_hash(user.password_hash, password):
+            message='Nome utente o password non corretti'
+            return render_template('login.html',check_message = message)
         else:
-            user = Users.query.filter_by(username = username).first()
-            if not user or not check_password_hash(user.password_hash, password):
-                message='Nome utente o password non corretti'
-                return render_template('login.html',check_message = message)
-            else:
-                login_user(user)
-                return redirect(url_for('dashboard'))
+            login_user(user)
+            return redirect(url_for('dashboard'))
 
 @app.route('/logout')    
 @login_required
@@ -150,8 +147,14 @@ def index():
 @app.route('/upload', methods=['POST'])
 @login_required
 def upload():
-    file = request.files['file']
-    if not file or not(file.filename.endswith('.csv') or file.filename.endswith('.xlsx') or file.filename.endswith('.xls')):
+    file = request.files.get('file')
+    allowed_extensions = ('.csv', '.xlsx', '.xls')
+
+    if file is None or not file.filename:
+        flash("Seleziona un file da caricare.", "danger")
+        return redirect(url_for('dashboard'))
+
+    if not file.filename.lower().endswith(allowed_extensions):
         flash("Formato file non valido. Carica un file CSV o Excel.", "danger")
         return redirect(url_for('dashboard'))
     try:

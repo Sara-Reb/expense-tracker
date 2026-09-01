@@ -42,11 +42,20 @@
             >
           </li>
           <li class="nav-item">
-            <a
-              class="btn btn-outline-light btn-sm"
-              href="{{ url_for('logout') }}"
-              >Logout</a
+            <form
+              action="{{ url_for('logout') }}"
+              method="POST"
+              class="d-inline"
             >
+              <input
+                type="hidden"
+                name="csrf_token"
+                value="{{ csrf_token() }}"
+              />
+              <button class="btn btn-outline-light btn-sm" type="submit">
+                Logout
+              </button>
+            </form>
           </li>
         </ul>
       </div>
