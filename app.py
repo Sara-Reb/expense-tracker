@@ -111,8 +111,11 @@ def register():
                 return redirect(url_for('login'))
 
 
-@app.route('/login', methods=('POST'))
+@app.route('/login', methods=['GET', 'POST'])
 def login():
+    if request.method == 'GET':
+        return render_template('login.html')
+
     username = (request.form.get('username') or '').strip().lower()
     password = request.form.get('password')
 
@@ -131,7 +134,7 @@ def login():
             login_user(user)
             return redirect(url_for('dashboard'))
 
-@app.route('/logout')    
+@app.route('/logout', methods=['POST'])    
 @login_required
 def logout():
     logout_user()
