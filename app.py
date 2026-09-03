@@ -224,20 +224,15 @@ def upload():
                 merchant=row['merchant'] if pd.notna(row['merchant']) else None,
                 transaction_hash=row_hash
             )
-            for index, row in parsed_df.iterrows():
-                if pd.isna(row['date']):
-                    continue
-                ...
-                expense = Expenses(...)
-                try:
-                    with db.session.begin_nested():
-                        db.session.add(expense)
-                except IntegrityError:
-                    continue 
+            
+            try:
+                with db.session.begin_nested():
+                    db.session.add(expense)
+            except IntegrityError:
+                continue 
 
-            db.session.commit()
-        
         db.session.commit()
+        
         return redirect(url_for('dashboard'))
         
     except Exception as e:
