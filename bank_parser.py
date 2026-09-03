@@ -195,56 +195,5 @@ Input Transactions to categorize (JSON format):
     return response.text
 
 
-# --- BLOCCO DI TEST ---
 
-# --- BLOCCO DI TEST (SENZA CACHE) ---
 
-if __name__ == "__main__":
-    import os
-    import json
-    
-    excel_path = 'account-statement_2026-03-01_2026-05-31_it-it_7d08ca.xlsx'
-    
-    # Leggiamo il file Excel
-    df = read_excel(excel_path, header=None)
-    
-    # 1. Chiamata DIRETTISSIMA a Gemini per identificare la struttura (Niente Cache)
-    print("Chiamata a Gemini per identificare la struttura...")
-    structure = identify_structure(df)
-    print("Structure identificata:", structure)
-    
-    # Pulizia e parsing dell'estratto conto (Metodo difensivo con .str.strip())
-    struct_dict = json.loads(structure)
-    header_row = int(struct_dict['header_row'])
-    
-    df_clean = df.drop(range(header_row))
-    df_clean.columns = df_clean.iloc[0].astype(str).str.strip()
-    df_clean = df_clean.drop(df_clean.index[0])
-    
-    # Aggiorna i nomi nel dizionario per sicurezza contro gli spazi bianchi
-    struct_dict['date_col'] = struct_dict['date_col'].strip()
-    if struct_dict.get('amount_col'): struct_dict['amount_col'] = struct_dict['amount_col'].strip()
-    if struct_dict.get('description_col'): struct_dict['description_col'] = struct_dict['description_col'].strip()
-    if struct_dict.get('income_col'): struct_dict['income_col'] = struct_dict['income_col'].strip()
-    if struct_dict.get('expense_col'): struct_dict['expense_col'] = struct_dict['expense_col'].strip()
-    
-    # Passiamo il DF pronto alla funzione
-    transaction_df = parse_bank_statement(df, json.dumps(struct_dict))
-    print("\nEstratto conto pulito e formattato:")
-    print(transaction_df.head(10).to_string())
-    
-    # 2. Chiamata DIRETTISSIMA a Gemini per la categorizzazione (Niente Cache)
-    print("\nChiamata a Gemini per la categorizzazione dei movimenti...")
-    analysis_json_str = categorize_transactions(transaction_df)
-
-    # 3. Unione e Stampa dei risultati
-    analysis_data = json.loads(analysis_json_str)
-    ai_df = pd.DataFrame(analysis_data['transactions'])
-    
-    if not ai_df.empty:
-        ai_df.set_index('row_id', inplace=True)
-        final_df = transaction_df.join(ai_df)
-        print("\nEcco il tuo estratto conto finale categorizzato:")
-        print(final_df[['date', 'amount', 'merchant', 'category']].to_string())
-    else:
-        print("Errore: Dati di analisi vuoti.")
