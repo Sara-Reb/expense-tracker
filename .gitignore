@@ -1,5 +1,6 @@
 .env
 venv/
+.venv/
 instance/
 *.json
 *.xls
